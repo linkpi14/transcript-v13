@@ -1,14 +1,281 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Transcritor de Vídeos - IA</title>
-  <meta name="description" content="Converta áudio de vídeos em texto automaticamente usando IA" />
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcrição de Áudio/Vídeo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #f0f4ff;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress {
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0;
+            transition: width 0.3s ease;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .transcription {
+            line-height: 1.6;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .error {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+            color: #d00;
+        }
+        
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        
+        .status.success {
+            background: #e6ffe6;
+            color: #006600;
+            border: 1px solid #99ff99;
+        }
+        
+        .status.error {
+            background: #ffe6e6;
+            color: #d00;
+            border: 1px solid #ff9999;
+        }
+    </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Transcrição de Áudio/Vídeo</h1>
+            <p>Converta e transcreva seus arquivos usando IA</p>
+        </div>
+        
+        <div class="content">
+            <div id="ffmpegStatus"></div>
+            
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <div>
+                    <h3>📁 Clique ou arraste um arquivo</h3>
+                    <p>Suporta: MP3, MP4, WAV, M4A, WebM, AVI, MOV, etc.</p>
+                    <p>Tamanho máximo: 100MB</p>
+                </div>
+                <input type="file" id="fileInput" accept="audio/*,video/*">
+            </div>
+            
+            <div class="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <p id="progressText">Processando...</p>
+            </div>
+            
+            <div class="result" id="result">
+                <h3>📝 Transcrição:</h3>
+                <div class="transcription" id="transcription"></div>
+                <button class="btn" onclick="copyTranscription()" style="margin-top: 15px;">
+                    📋 Copiar Texto
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Verificar status do FFmpeg
+        async function checkFFmpegStatus() {
+            try {
+                const response = await fetch('/check-ffmpeg');
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('ffmpegStatus');
+                if (data.status === 'ok') {
+                    statusDiv.innerHTML = '<div class="status success">✅ Sistema pronto para uso</div>';
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">❌ FFmpeg não encontrado. Verifique a instalação.</div>';
+                }
+            } catch (error) {
+                document.getElementById('ffmpegStatus').innerHTML = 
+                    '<div class="status error">❌ Erro ao verificar sistema</div>';
+            }
+        }
+
+        // Verificar status na inicialização
+        checkFFmpegStatus();
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.querySelector('.upload-area');
+        const progress = document.querySelector('.progress');
+        const result = document.getElementById('result');
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                uploadFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            progress.style.display = 'block';
+            result.style.display = 'none';
+
+            try {
+                const response = await fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('transcription').textContent = data.transcription;
+                    result.classList.remove('error');
+                    result.style.display = 'block';
+                } else {
+                    throw new Error(data.error || data.details);
+                }
+            } catch (error) {
+                document.getElementById('transcription').textContent = 
+                    'Erro: ' + error.message;
+                result.classList.add('error');
+                result.style.display = 'block';
+            } finally {
+                progress.style.display = 'none';
+            }
+        }
+
+        function copyTranscription() {
+            const text = document.getElementById('transcription').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Texto copiado para a área de transferência!');
+            });
+        }
+    </script>
 </body>
 </html>
